@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HealthyEats</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- 顶部栏 -->
+<div class="top-bar">
+  <div class="top-bar-row">
+    <div>
+      <h1>HealthyEats</h1>
+      <div class="subtitle" id="today-label">加载中...</div>
+    </div>
+    <div style="width:36px"></div>
+  </div>
+</div>
+
+<!-- 今日热量总览 -->
+<div class="calorie-overview" id="calorie-overview">
+  <div class="calorie-overview-title">今日热量总览</div>
+  <div class="calorie-three-row">
+    <div class="calorie-cell">
+      <div class="c-val" id="cal-max">--</div>
+      <div class="c-label">最多可摄入</div>
+    </div>
+    <div class="calorie-divider"></div>
+    <div class="calorie-cell">
+      <div class="c-val" id="cal-actual">0</div>
+      <div class="c-label">已摄入</div>
+    </div>
+    <div class="calorie-divider"></div>
+    <div class="calorie-cell">
+      <div class="c-val" id="cal-remain">--</div>
+      <div class="c-label">还可摄入</div>
+    </div>
+  </div>
+  <div class="calorie-progress-wrap">
+    <div class="calorie-progress-fill" id="cal-progress" style="width:0%"></div>
+  </div>
+  <div class="calorie-progress-label">
+    <span>0</span><span id="cal-progress-pct">0%</span><span id="cal-max-label">--</span>
+  </div>
+  <!-- 营养素三维 -->
+  <div class="macro-overview" id="macro-overview"></div>
+</div>
+
+<!-- 无档案提示 -->
+<div id="no-profile-tip" style="display:none;margin:0 16px;">
+  <div class="card" style="text-align:center;padding:28px;">
+    <div style="font-size:36px;margin-bottom:10px;">📋</div>
+    <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">请先完善个人档案以获取营养目标</div>
+    <a href="profile.html" class="btn btn-primary btn-full">去完善档案</a>
+  </div>
+</div>
+
+<!-- 今日三餐 -->
+<div id="meals-container"></div>
+
+<!-- 今日建议 -->
+<div id="advice-container"></div>
+
+<!-- 浮动添加按钮 -->
+<a href="camera.html" class="fab">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
+  </svg>
+</a>
+
+<!-- 底部导航 -->
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item active" data-page="home">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+    <span>首页</span>
+  </a>
+  <a href="records.html" class="nav-item" data-page="records">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+    <span>记录</span>
+  </a>
+  <a href="profile.html" class="nav-item" data-page="profile">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+    <span>我的</span>
+  </a>
+</nav>
+
+<script src="js/app.js"></script>
+<script>
+const today = DateUtil.today();
+const d = new Date();
+document.getElementById('today-label').textContent =
+  `${d.getMonth()+1}月${d.getDate()}日 · 今日饮食`;
+
+function render() {
+  const profile = Profile.get();
+  const overviewEl = document.getElementById('calorie-overview');
+  const noProfileEl = document.getElementById('no-profile-tip');
+  const mealsEl = document.getElementById('meals-container');
+  const adviceEl = document.getElementById('advice-container');
+
+  if (!profile) {
+    overviewEl.style.display = 'none';
+    noProfileEl.style.display = 'block';
+    mealsEl.innerHTML = '';
+    adviceEl.innerHTML = '';
+    return;
+  }
+
+  overviewEl.style.display = 'block';
+  noProfileEl.style.display = 'none';
+
+  const tdee = Profile.calcTDEE(profile);
+  const macroTargets = Profile.calcMacroTargets(profile);
+  const actualTotals = DietLog.getDayActualTotals(today);
+  const diff = tdee - actualTotals.calories;
+
+  // 热量三值
+  document.getElementById('cal-max').textContent = tdee;
+  document.getElementById('cal-actual').textContent = actualTotals.calories;
+  const remainEl = document.getElementById('cal-remain');
+  remainEl.textContent = Math.abs(diff);
+  remainEl.className = 'c-val' + (diff < 0 ? ' over' : '');
+  document.getElementById('cal-max-label').textContent = tdee + ' kcal';
+
+  const pct = Math.min(100, Math.round(actualTotals.calories / tdee * 100));
+  document.getElementById('cal-progress').style.width = pct + '%';
+  document.getElementById('cal-progress-pct').textContent = pct + '%';
+
+  // 营养素三维
+  const macros = [
+    { key: 'carbs',   name: '碳水', unit: 'g' },
+    { key: 'protein', name: '蛋白质', unit: 'g' },
+    { key: 'fat',     name: '脂肪', unit: 'g' }
+  ];
+  const macroHTML = macros.map(m => {
+    const target = macroTargets[m.key];
+    const actual = actualTotals[m.key];
+    const remain = Math.round((target - actual) * 10) / 10;
+    const p = Math.min(100, Math.round(actual / target * 100));
+    const overClass = remain < 0 ? ' over' : '';
+    return `<div class="macro-row">
+      <div class="macro-name">${m.name}</div>
+      <div class="macro-bars">
+        <div class="macro-bar-bg"><div class="macro-bar-fill" style="width:${p}%"></div></div>
+        <div class="macro-vals">
+          <span>${actual}${m.unit} 已摄入</span>
+          <span class="macro-remain${overClass}">${remain>=0?'还可摄入':'超标'} ${Math.abs(remain)}${m.unit}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('macro-overview').innerHTML = macroHTML;
+
+  // 三餐卡片
+  const mealTargets = Profile.calcMealTargets(profile);
+  const MEALS = [
+    { key: 'breakfast', name: '早餐', icon: '🌅' },
+    { key: 'lunch',     name: '午餐', icon: '☀️' },
+    { key: 'dinner',    name: '晚餐', icon: '🌙' }
+  ];
+
+  mealsEl.innerHTML = MEALS.map(meal => {
+    const target = mealTargets[meal.key];
+    const actual = DietLog.getMealActualTotals(today, meal.key);
+    const cPct = target.calories > 0 ? Math.min(120, Math.round(actual.calories / target.calories * 100)) : 0;
+    const cColor = UI.progressColor(cPct);
+
+    const rows = [
+      { label: '碳水', actual: actual.carbs,   target: target.carbs,   unit: 'g' },
+      { label: '蛋白', actual: actual.protein,  target: target.protein, unit: 'g' },
+      { label: '脂肪', actual: actual.fat,      target: target.fat,     unit: 'g' }
+    ].map(r => {
+      const p = r.target > 0 ? Math.min(120, Math.round(r.actual / r.target * 100)) : 0;
+      return `<div class="meal-progress-row">
+        <span class="m-label">${r.label}</span>
+        <div class="progress-bar"><div class="progress-fill" style="width:${p}%;background:${UI.progressColor(p)}"></div></div>
+        <span class="m-val">${r.actual}/${r.target}${r.unit}</span>
+      </div>`;
+    }).join('');
+
+    const records = DietLog.getByDate(today).filter(r => r.mealType === meal.key);
+    const emptyTip = records.length === 0
+      ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">暂无记录，点击添加</div>` : '';
+
+    return `<div class="meal-card">
+      <div class="meal-card-header">
+        <div class="meal-card-title">${meal.icon} ${meal.name}</div>
+        <div class="meal-card-cal">${actual.calories} / ${target.calories} kcal</div>
+      </div>
+      <div class="meal-progress-row">
+        <span class="m-label">热量</span>
+        <div class="progress-bar"><div class="progress-fill" style="width:${cPct}%;background:${cColor}"></div></div>
+        <span class="m-val">${actual.calories}/${target.calories}</span>
+      </div>
+      ${rows}
+      ${emptyTip}
+      <button class="meal-add-btn" onclick="location.href='camera.html?meal=${meal.key}'">+ 添加食物</button>
+    </div>`;
+  }).join('');
+
+  // 今日建议
+  const advice = MealAdvisor.generateAdvice(actualTotals, macroTargets);
+  adviceEl.innerHTML = `<div class="advice-section">
+    <div class="advice-section-title">💡 今日建议</div>
+    ${advice.map(a => `<div class="advice-item">
+      <div class="advice-icon">${a.icon}</div>
+      <div>
+        <div class="advice-title">${a.title}</div>
+        <div class="advice-desc">${a.desc}</div>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+render();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+</script>
+</body>
+</html>

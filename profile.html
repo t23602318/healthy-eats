@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>我的档案 - HealthyEats</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-row">
+    <button class="back-btn" onclick="location.href='index.html'">←</button>
+    <h1>我的档案</h1>
+    <div style="width:36px"></div>
+  </div>
+</div>
+
+<!-- 统计概览 -->
+<div id="stats-section" style="display:none;">
+  <div class="profile-hero">
+    <div class="profile-avatar" id="profile-avatar-container">
+      <span id="avatar-emoji">🧑</span>
+    </div>
+    <div id="profile-name" style="font-size:17px;font-weight:600;"></div>
+    <div id="profile-goal-label" style="font-size:13px;color:var(--text-secondary);margin-top:4px;"></div>
+  </div>
+  <div class="card">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">BMI 指数</div>
+    <div class="bmi-bar-container">
+      <div class="bmi-indicator" id="bmi-indicator"></div>
+    </div>
+    <div class="bmi-labels"><span>偏瘦</span><span>正常</span><span>超重</span><span>肥胖</span></div>
+    <div style="text-align:center;margin-top:14px;">
+      <span id="bmi-value" style="font-size:26px;font-weight:700;"></span>
+      <span id="bmi-label" style="font-size:14px;margin-left:8px;"></span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">🔥 今日热量目标</div>
+    <div id="tdee-display" style="text-align:center;padding:12px 0;">
+      <div style="font-size:34px;font-weight:700;color:var(--primary);" id="tdee-val">-</div>
+      <div style="font-size:13px;color:var(--text-secondary);">kcal / 天</div>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Read View -->
+<div class="card" id="profile-read-view" style="display:none;">
+  <div class="card-title">📋 基本信息</div>
+  <div id="profile-info-list"></div>
+  <div style="margin-top:18px;">
+    <button class="btn btn-primary btn-full btn-lg" onclick="enterEditMode()">✏️ 编辑</button>
+  </div>
+</div>
+
+<!-- Profile Edit View (form) -->
+<div id="profile-edit-view" style="display:none;">
+  <div class="card">
+    <div class="card-title">📋 编辑基本信息</div>
+
+    <!-- Avatar edit -->
+    <div style="text-align:center;margin-bottom:18px;">
+      <div class="profile-avatar" id="edit-avatar-container" style="cursor:pointer;" onclick="pickAvatar()">
+        <span id="edit-avatar-emoji">🧑</span>
+        <div class="avatar-edit-badge">
+          <svg viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
+        </div>
+      </div>
+      <input type="file" id="avatar-file-input" accept="image/*" style="display:none;" onchange="onAvatarFileSelected(event)">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">性别 *</label>
+        <select id="f-gender" class="form-input">
+          <option value="male">男</option>
+          <option value="female">女</option>
+        </select>
+        <div class="form-error" id="err-gender"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">年龄（岁）*</label>
+        <input type="number" id="f-age" class="form-input" placeholder="25" min="1" max="120">
+        <div class="form-error" id="err-age"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">身高（cm）*</label>
+        <input type="number" id="f-height" class="form-input" placeholder="170" min="50" max="250">
+        <div class="form-error" id="err-height"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">体重（kg）*</label>
+        <input type="number" id="f-weight" class="form-input" placeholder="65" min="10" max="500">
+        <div class="form-error" id="err-weight"></div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">体脂率（%，选填）</label>
+      <input type="number" id="f-bodyfat" class="form-input" placeholder="20" min="0" max="70">
+      <div class="form-error" id="err-bodyfat"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">活动水平 *</label>
+      <select id="f-activity" class="form-input">
+        <option value="sedentary">久坐（几乎不运动）</option>
+        <option value="light" selected>轻度活动（每周1-3次运动）</option>
+        <option value="moderate">中度活动（每周3-5次运动）</option>
+        <option value="active">高强度活动（每周6-7次）</option>
+        <option value="very_active">非常高强度（体力劳动者）</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">健康目标</label>
+      <select id="f-goal" class="form-input">
+        <option value="lose">减脂（热量缺口20%）</option>
+        <option value="maintain" selected>维持体重</option>
+        <option value="gain">增肌（热量盈余15%）</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:8px;">
+      <button class="btn btn-primary btn-lg" style="flex:1;" onclick="saveProfile()">💾 保存</button>
+      <button class="btn btn-outline btn-lg" style="flex:1;" onclick="cancelEdit()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设备信息 -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-title">📱 设备信息</div>
+  <div style="font-size:13px;color:var(--text-secondary);word-break:break-all;">
+    设备ID：<span id="device-id-display" style="color:var(--text-primary);font-size:12px;"></span>
+  </div>
+  <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">数据已与本设备绑定，重新访问不会丢失</div>
+</div>
+
+<!-- 底部导航 -->
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item" data-page="home">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+    <span>首页</span>
+  </a>
+  <a href="records.html" class="nav-item" data-page="records">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+    <span>记录</span>
+  </a>
+  <a href="profile.html" class="nav-item active" data-page="profile">
+    <span class="nav-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+    <span>我的</span>
+  </a>
+</nav>
+
+<script src="js/app.js"></script>
+<script>
+const GOAL_LABELS = { lose: '🎯 减脂模式', maintain: '⚖️ 维持体重', gain: '💪 增肌模式' };
+const GOAL_DISPLAY = { lose: '减脂', maintain: '维持体重', gain: '增肌' };
+const GENDER_DISPLAY = { male: '男', female: '女' };
+const ACTIVITY_DISPLAY = {
+  sedentary: '久坐',
+  light: '轻度活动',
+  moderate: '中度活动',
+  active: '高强度活动',
+  very_active: '非常高强度'
+};
+
+let pendingAvatarBase64 = null;
+
+// ===== Avatar rendering =====
+function renderAvatar() {
+  const p = Profile.get();
+  const container = document.getElementById('profile-avatar-container');
+  if (p && p.avatar) {
+    container.innerHTML = `<img src="${p.avatar}" alt="头像">`;
+  } else {
+    container.innerHTML = `<span id="avatar-emoji">🧑</span>`;
+  }
+}
+
+function renderEditAvatar() {
+  const p = Profile.get();
+  const container = document.getElementById('edit-avatar-container');
+  let imgHTML = '';
+  if (pendingAvatarBase64) {
+    imgHTML = `<img src="${pendingAvatarBase64}" alt="头像">`;
+  } else if (p && p.avatar) {
+    imgHTML = `<img src="${p.avatar}" alt="头像">`;
+  } else {
+    imgHTML = `<span id="edit-avatar-emoji">🧑</span>`;
+  }
+  container.innerHTML = imgHTML + `<div class="avatar-edit-badge"><svg viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg></div>`;
+}
+
+function pickAvatar() {
+  document.getElementById('avatar-file-input').click();
+}
+
+function onAvatarFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    showCropModal(ev.target.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== Crop Modal =====
+function showCropModal(imageSrc) {
+  // Remove existing crop overlay if any
+  const existing = document.querySelector('.crop-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'crop-overlay';
+  overlay.innerHTML = `
+    <div style="color:#fff;font-size:16px;font-weight:500;margin-bottom:8px;">调整头像</div>
+    <div class="crop-container" id="crop-container">
+      <img id="crop-img" src="${imageSrc}" draggable="false">
+    </div>
+    <input type="range" class="crop-zoom" id="crop-zoom" min="100" max="300" value="150">
+    <div style="display:flex;gap:12px;">
+      <button class="btn btn-outline" style="color:#fff;border-color:#fff;" onclick="closeCropModal()">取消</button>
+      <button class="btn btn-primary" onclick="applyCrop()">确认裁剪</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Setup crop interaction
+  const img = document.getElementById('crop-img');
+  const container = document.getElementById('crop-container');
+  const zoomSlider = document.getElementById('crop-zoom');
+
+  let scale = 1.5;
+  let imgX = 0, imgY = 0;
+  let dragging = false;
+  let startX, startY, startImgX, startImgY;
+
+  img.onload = function() {
+    const containerSize = 280;
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    let baseW, baseH;
+    if (imgRatio > 1) {
+      baseH = containerSize;
+      baseW = containerSize * imgRatio;
+    } else {
+      baseW = containerSize;
+      baseH = containerSize / imgRatio;
+    }
+    img._baseW = baseW;
+    img._baseH = baseH;
+    updateImgTransform();
+  };
+  // Trigger onload for cached images
+  if (img.complete) img.onload();
+
+  function updateImgTransform() {
+    const w = (img._baseW || 280) * scale;
+    const h = (img._baseH || 280) * scale;
+    img.style.width = w + 'px';
+    img.style.height = h + 'px';
+    img.style.left = (140 - w/2 + imgX) + 'px';
+    img.style.top = (140 - h/2 + imgY) + 'px';
+  }
+
+  zoomSlider.oninput = function() {
+    scale = this.value / 100;
+    updateImgTransform();
+  };
+
+  // Drag support (mouse)
+  container.onmousedown = function(e) {
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startImgX = imgX; startImgY = imgY;
+    e.preventDefault();
+  };
+  document.addEventListener('mousemove', function handler(e) {
+    if (!dragging) return;
+    imgX = startImgX + (e.clientX - startX);
+    imgY = startImgY + (e.clientY - startY);
+    updateImgTransform();
+  });
+  document.addEventListener('mouseup', function handler() { dragging = false; });
+
+  // Touch drag support
+  container.ontouchstart = function(e) {
+    if (e.touches.length === 1) {
+      dragging = true;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      startImgX = imgX; startImgY = imgY;
+      e.preventDefault();
+    }
+  };
+  container.ontouchmove = function(e) {
+    if (!dragging || e.touches.length !== 1) return;
+    imgX = startImgX + (e.touches[0].clientX - startX);
+    imgY = startImgY + (e.touches[0].clientY - startY);
+    updateImgTransform();
+    e.preventDefault();
+  };
+  container.ontouchend = function() { dragging = false; };
+
+  // Store references for applyCrop
+  overlay._cropState = { img, scale, getImgX: () => imgX, getImgY: () => imgY };
+}
+
+function closeCropModal() {
+  const overlay = document.querySelector('.crop-overlay');
+  if (overlay) overlay.remove();
+}
+
+function applyCrop() {
+  const overlay = document.querySelector('.crop-overlay');
+  if (!overlay || !overlay._cropState) return;
+
+  const { img, scale, getImgX, getImgY } = overlay._cropState;
+  const imgX = getImgX();
+  const imgY = getImgY();
+  const containerSize = 280;
+  const outputSize = 150;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const ctx = canvas.getContext('2d');
+
+  // Circular clip
+  ctx.beginPath();
+  ctx.arc(outputSize/2, outputSize/2, outputSize/2, 0, Math.PI*2);
+  ctx.closePath();
+  ctx.clip();
+
+  // Calculate source coordinates
+  const drawW = (img._baseW || containerSize) * scale;
+  const drawH = (img._baseH || containerSize) * scale;
+  const drawX = (containerSize/2 - drawW/2 + imgX);
+  const drawY = (containerSize/2 - drawH/2 + imgY);
+
+  // Scale from container coords (280) to output coords (150)
+  const ratio = outputSize / containerSize;
+  ctx.drawImage(img, drawX * ratio, drawY * ratio, drawW * ratio, drawH * ratio);
+
+  const base64 = canvas.toDataURL('image/jpeg', 0.85);
+  pendingAvatarBase64 = base64;
+  renderEditAvatar();
+  closeCropModal();
+  UI.showToast('头像已裁剪');
+}
+
+// ===== Read / Edit Mode =====
+function enterEditMode() {
+  document.getElementById('profile-read-view').style.display = 'none';
+  document.getElementById('profile-edit-view').style.display = 'block';
+  pendingAvatarBase64 = null;
+  renderEditAvatar();
+}
+
+function exitEditMode() {
+  document.getElementById('profile-edit-view').style.display = 'none';
+  document.getElementById('profile-read-view').style.display = 'block';
+  renderReadView();
+  renderAvatar();
+}
+
+function cancelEdit() {
+  loadForm();
+  pendingAvatarBase64 = null;
+  exitEditMode();
+}
+
+function renderReadView() {
+  const p = Profile.get();
+  if (!p) return;
+  const rows = [
+    { label: '性别', value: GENDER_DISPLAY[p.gender] || p.gender },
+    { label: '年龄', value: p.age + ' 岁' },
+    { label: '身高', value: p.height + ' cm' },
+    { label: '体重', value: p.weight + ' kg' },
+    { label: '体脂率', value: p.bodyFat ? p.bodyFat + '%' : '未填写' },
+    { label: '活动水平', value: ACTIVITY_DISPLAY[p.activity] || p.activity },
+    { label: '健康目标', value: GOAL_DISPLAY[p.goal] || p.goal }
+  ];
+  document.getElementById('profile-info-list').innerHTML = rows.map(r =>
+    `<div class="profile-info-row">
+      <span class="profile-info-label">${r.label}</span>
+      <span class="profile-info-value">${r.value}</span>
+    </div>`
+  ).join('');
+}
+
+function loadForm() {
+  const p = Profile.get();
+  if (p) {
+    document.getElementById('f-gender').value   = p.gender || 'male';
+    document.getElementById('f-age').value      = p.age || '';
+    document.getElementById('f-height').value   = p.height || '';
+    document.getElementById('f-weight').value   = p.weight || '';
+    document.getElementById('f-bodyfat').value  = p.bodyFat || '';
+    document.getElementById('f-activity').value = p.activity || 'light';
+    document.getElementById('f-goal').value     = p.goal || 'maintain';
+    renderStats(p);
+  }
+  document.getElementById('device-id-display').textContent = Device.getId();
+}
+
+function renderStats(p) {
+  document.getElementById('stats-section').style.display = 'block';
+  document.getElementById('profile-name').textContent = `${p.gender==='male'?'👨':'👩'} ${p.age}岁 · ${p.height}cm · ${p.weight}kg`;
+  document.getElementById('profile-goal-label').textContent = GOAL_LABELS[p.goal] || '';
+
+  const bmi = Profile.calcBMI(p);
+  const bmiInfo = Profile.getBMILabel(bmi);
+  const tdee = Profile.calcTDEE(p);
+
+  document.getElementById('tdee-val').textContent = tdee;
+  document.getElementById('bmi-value').textContent = bmi;
+  const bmiLabelEl = document.getElementById('bmi-label');
+  bmiLabelEl.textContent = bmiInfo.label;
+  bmiLabelEl.style.color = bmiInfo.color;
+
+  const pct = Math.min(100, Math.max(0, (bmi - 10) / 25 * 100));
+  document.getElementById('bmi-indicator').style.left = pct + '%';
+
+  const macros = Profile.calcMacroTargets(p);
+  document.getElementById('stat-grid').innerHTML = [
+    { label: 'BMI', value: bmi, unit: '' },
+    { label: 'TDEE', value: tdee, unit: 'kcal' },
+    { label: '蛋白质目标', value: macros.protein, unit: 'g/天' }
+  ].map(s => `<div class="stat-item">
+    <div class="stat-value">${s.value}</div>
+    <div class="stat-unit">${s.unit}</div>
+    <div class="stat-label">${s.label}</div>
+  </div>`).join('');
+}
+
+function validate() {
+  let ok = true;
+  const fields = [
+    { id: 'f-age',    errId: 'err-age',    min: 1,   max: 120, name: '年龄', required: true },
+    { id: 'f-height', errId: 'err-height', min: 50,  max: 250, name: '身高', required: true },
+    { id: 'f-weight', errId: 'err-weight', min: 10,  max: 500, name: '体重', required: true },
+    { id: 'f-bodyfat',errId: 'err-bodyfat',min: 0,   max: 70,  name: '体脂率', required: false }
+  ];
+
+  document.querySelectorAll('.form-error').forEach(el => el.classList.remove('show'));
+
+  fields.forEach(f => {
+    const el = document.getElementById(f.id);
+    const errEl = document.getElementById(f.errId);
+    const val = el.value.trim();
+    if (f.required && !val) {
+      errEl.textContent = `${f.name}不能为空`;
+      errEl.classList.add('show');
+      ok = false;
+    } else if (val) {
+      const num = parseFloat(val);
+      if (isNaN(num) || num < f.min || num > f.max) {
+        errEl.textContent = `${f.name}请填写 ${f.min}–${f.max} 之间的数值`;
+        errEl.classList.add('show');
+        ok = false;
+      }
+    }
+  });
+  return ok;
+}
+
+function saveProfile() {
+  if (!validate()) return;
+  const existing = Profile.get() || {};
+  const p = {
+    gender:   document.getElementById('f-gender').value,
+    age:      parseInt(document.getElementById('f-age').value),
+    height:   parseFloat(document.getElementById('f-height').value),
+    weight:   parseFloat(document.getElementById('f-weight').value),
+    bodyFat:  parseFloat(document.getElementById('f-bodyfat').value) || null,
+    activity: document.getElementById('f-activity').value,
+    goal:     document.getElementById('f-goal').value,
+    avatar:   pendingAvatarBase64 || existing.avatar || null
+  };
+  Profile.save(p);
+  renderStats(p);
+  renderReadView();
+  renderAvatar();
+  UI.showToast('保存成功！');
+  pendingAvatarBase64 = null;
+  exitEditMode();
+}
+
+// ===== Initialize =====
+loadForm();
+renderAvatar();
+
+if (Profile.get()) {
+  // Show read view
+  document.getElementById('profile-read-view').style.display = 'block';
+  document.getElementById('profile-edit-view').style.display = 'none';
+  renderReadView();
+} else {
+  // No profile yet — start in edit mode
+  document.getElementById('profile-read-view').style.display = 'none';
+  document.getElementById('profile-edit-view').style.display = 'block';
+  renderEditAvatar();
+}
+</script>
+</body>
+</html>

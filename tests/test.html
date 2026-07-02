@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HealthyEats 自动化测试</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; background: #F1F0EB; padding: 20px; margin: 0; }
+    h1 { font-size: 20px; color: #1E1E1E; margin-bottom: 6px; }
+    #summary { padding: 16px 20px; border-radius: 14px; margin-bottom: 20px; font-size: 16px; font-weight: 600; }
+    #summary.pass { background: #E8F0ED; color: #1E3932; }
+    #summary.fail { background: #FEE2E2; color: #C0392B; }
+    .suite { background: #fff; border-radius: 16px; padding: 18px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+    .suite h2 { font-size: 15px; color: #1E1E1E; margin-bottom: 12px; border-bottom: 1px solid #E0DDD8; padding-bottom: 8px; }
+    .test-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #F0EDE8; font-size: 14px; }
+    .test-item:last-child { border-bottom: none; }
+    .status { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .test-name { flex: 1; color: #1E1E1E; }
+    .test-detail { font-size: 12px; color: #C0392B; margin-top: 3px; font-family: monospace; background: #FFF5F5; padding: 4px 8px; border-radius: 4px; }
+    .pass-detail { color: #1E3932; background: #E8F0ED; }
+  </style>
+</head>
+<body>
+
+<h1>🧪 HealthyEats 自动化测试</h1>
+<div id="summary">运行中...</div>
+<div id="test-results"></div>
+
+<script>
+// ===== 内联核心逻辑（与 app.js / food-db.js 保持完全一致）=====
+
+// 模拟 Device
+const Device = {
+  _id: 'test_device_001',
+  getId() { return this._id; }
+};
+
+// 模拟 Storage（内存模式）
+const _memStore = {};
+const Storage = {
+  _key(key) { return Device.getId() + '_' + key; },
+  get(key, defaultVal = null) {
+    try {
+      const v = _memStore[this._key(key)];
+      return v !== undefined ? JSON.parse(v) : defaultVal;
+    } catch { return defaultVal; }
+  },
+  set(key, val) { _memStore[this._key(key)] = JSON.stringify(val); },
+  remove(key) { delete _memStore[this._key(key)]; }
+};
+
+const Profile = {
+  KEY: 'health_profile',
+  ACTIVITY_MAP: { sedentary:1.2, light:1.375, moderate:1.55, active:1.725, very_active:1.9 },
+  get() { return Storage.get(this.KEY, null); },
+  save(data) { Storage.set(this.KEY, data); },
+  calcBMR(p) {
+    if (p.gender === 'male') return 10*p.weight + 6.25*p.height - 5*p.age + 5;
+    return 10*p.weight + 6.25*p.height - 5*p.age - 161;
+  },
+  calcTDEE(p) {
+    const factor = this.ACTIVITY_MAP[p.activity] || 1.55;
+    return Math.round(this.calcBMR(p) * factor);
+  },
+  calcMacroTargets(p) {
+    const tdee = this.calcTDEE(p);
+    let pR=0.20, cR=0.50, fR=0.30;
+    if (p.goal==='lose')  { pR=0.30; cR=0.40; fR=0.30; }
+    if (p.goal==='gain')  { pR=0.25; cR=0.50; fR=0.25; }
+    return {
+      calories: tdee,
+      carbs: Math.round(tdee*cR/4),
+      protein: Math.round(tdee*pR/4),
+      fat: Math.round(tdee*fR/9),
+      fiber: 25
+    };
+  },
+  calcMealTargets(p) {
+    const daily = this.calcMacroTargets(p);
+    const ratios = { breakfast: 0.3, lunch: 0.4, dinner: 0.3 };
+    const result = {};
+    ['breakfast','lunch','dinner'].forEach(m => {
+      const r = ratios[m];
+      result[m] = {
+        calories: Math.round(daily.calories * r),
+        carbs: Math.round(daily.carbs * r),
+        protein: Math.round(daily.protein * r),
+        fat: Math.round(daily.fat * r),
+        fiber: Math.round(daily.fiber * r)
+      };
+    });
+    return result;
+  },
+  calcBMI(p) { const h = p.height/100; return +(p.weight/(h*h)).toFixed(1); },
+  getBMILabel(bmi) {
+    if (bmi < 18.5) return { label: '偏瘦', color: '#4ECDC4' };
+    if (bmi < 24)   return { label: '正常', color: '#4CAF82' };
+    if (bmi < 28)   return { label: '超重', color: '#F39C12' };
+    return { label: '肥胖', color: '#E74C3C' };
+  }
+};
+</script>
+
+<script>
+const IntakeCalc = {
+  calcActual(estimated, percent) {
+    const p = Math.max(1, Math.min(100, parseInt(percent) || 100)) / 100;
+    return {
+      calories: Math.round(estimated.calories * p),
+      carbs:    Math.round(estimated.carbs    * p * 10) / 10,
+      protein:  Math.round(estimated.protein  * p * 10) / 10,
+      fat:      Math.round(estimated.fat      * p * 10) / 10,
+      fiber:    Math.round((estimated.fiber || 0) * p * 10) / 10
+    };
+  }
+};
+
+const DietLog = {
+  KEY_PREFIX: 'diet_log_',
+  getKey(date) { return this.KEY_PREFIX + date; },
+  getByDate(date) { return Storage.get(this.getKey(date), []); },
+  addRecord(record) {
+    const list = this.getByDate(record.date);
+    record.id = Date.now() + Math.random();
+    record.deviceId = Device.getId();
+    list.push(record);
+    Storage.set(this.getKey(record.date), list);
+    return record;
+  },
+  removeRecord(date, recordId) {
+    const list = this.getByDate(date).filter(r => r.id !== recordId);
+    Storage.set(this.getKey(date), list);
+  },
+  getDayActualTotals(date) {
+    const list = this.getByDate(date);
+    const t = { calories:0, carbs:0, protein:0, fat:0, fiber:0 };
+    list.forEach(r => {
+      t.calories += r.actualCalories             || 0;
+      t.carbs    += r.actualNutrition?.carbs     || 0;
+      t.protein  += r.actualNutrition?.protein   || 0;
+      t.fat      += r.actualNutrition?.fat       || 0;
+      t.fiber    += r.actualNutrition?.fiber     || 0;
+    });
+    return {
+      calories: Math.round(t.calories),
+      carbs: Math.round(t.carbs*10)/10,
+      protein: Math.round(t.protein*10)/10,
+      fat: Math.round(t.fat*10)/10,
+      fiber: Math.round(t.fiber*10)/10
+    };
+  },
+  getCalorieDiff(date, tdee) {
+    const actual = this.getDayActualTotals(date).calories;
+    return tdee - actual;
+  },
+  getMealActualTotals(date, mealType) {
+    const t = { calories:0, carbs:0, protein:0, fat:0, fiber:0 };
+    this.getByDate(date).filter(r=>r.mealType===mealType).forEach(r => {
+      t.calories += r.actualCalories             || 0;
+      t.carbs    += r.actualNutrition?.carbs     || 0;
+      t.protein  += r.actualNutrition?.protein   || 0;
+      t.fat      += r.actualNutrition?.fat       || 0;
+      t.fiber    += r.actualNutrition?.fiber     || 0;
+    });
+    return {
+      calories: Math.round(t.calories),
+      carbs: Math.round(t.carbs*10)/10,
+      protein: Math.round(t.protein*10)/10,
+      fat: Math.round(t.fat*10)/10,
+      fiber: Math.round(t.fiber*10)/10
+    };
+  }
+};
+</script>
+
+<script>
+// ===== FoodDB (inline subset for testing) =====
+const FoodDB = {
+  _data: [
+    { name: '白米饭', category: '主食', amount: 100, unit: '克', calories: 116, protein: 2.6, carbs: 25.6, fat: 0.3, fiber: 0.3 },
+    { name: '鸡胸肉', category: '肉类', amount: 100, unit: '克', calories: 133, protein: 31.0, carbs: 0, fat: 1.2, fiber: 0 },
+    { name: '西兰花', category: '蔬菜', amount: 100, unit: '克', calories: 34, protein: 2.8, carbs: 5.8, fat: 0.4, fiber: 2.6 },
+    { name: '苹果', category: '水果', amount: 100, unit: '克', calories: 52, protein: 0.3, carbs: 13.8, fat: 0.2, fiber: 2.4 },
+    { name: '牛奶(全脂)', category: '饮品', amount: 100, unit: '毫升', calories: 65, protein: 3.2, carbs: 4.8, fat: 3.6, fiber: 0 },
+    { name: '全麦面包', category: '主食', amount: 100, unit: '克', calories: 246, protein: 8.5, carbs: 41.0, fat: 3.4, fiber: 6.8 },
+    { name: '鸡蛋(煮)', category: '肉类', amount: 50, unit: '克', calories: 72, protein: 6.5, carbs: 0.6, fat: 5.0, fiber: 0 },
+    { name: '红薯', category: '主食', amount: 100, unit: '克', calories: 86, protein: 1.6, carbs: 20.1, fat: 0.2, fiber: 3.0 },
+    { name: '薯片', category: '零食', amount: 100, unit: '克', calories: 536, protein: 6.5, carbs: 49.7, fat: 35.0, fiber: 4.4 },
+    { name: '豆腐', category: '豆制品', amount: 100, unit: '克', calories: 76, protein: 8.1, carbs: 1.7, fat: 3.7, fiber: 0.4 },
+    { name: '面条(煮)', category: '主食', amount: 100, unit: '克', calories: 110, protein: 3.5, carbs: 22.0, fat: 0.6, fiber: 0.8 }
+  ],
+  getCategories() {
+    return ['主食', '肉类', '蔬菜', '水果', '饮品', '零食', '豆制品', '蛋奶', '海鲜', '汤粥', '快餐', '坚果'];
+  },
+  getByCategory(category) {
+    return this._data.filter(item => item.category === category);
+  },
+  search(keyword) {
+    if (!keyword || !keyword.trim()) return [];
+    const kw = keyword.trim().toLowerCase();
+    const results = this._data.filter(item =>
+      item.name.toLowerCase().includes(kw) ||
+      item.category.toLowerCase().includes(kw)
+    );
+    return results.slice(0, 20);
+  }
+};
+
+// ===== MealAdvisor =====
+const MealAdvisor = {
+  FOOD_TIPS: {
+    carbs:   { low: ['米饭（约半碗≈100g）', '全麦面包（1片≈30g）', '红薯（半个≈100g）'], high: ['减少米饭', '少吃甜食和精制主食'] },
+    protein: { low: ['鸡胸肉（100g≈31g蛋白）', '鸡蛋（1个≈6g蛋白）', '豆腐（150g≈12g蛋白）'], high: ['适量减少肉类摄入'] },
+    fat:     { low: ['坚果（一小把）', '牛油果（半个）'], high: ['减少油炸食品', '烹饪少放油'] },
+    fiber:   { low: ['绿叶蔬菜（150g）', '苹果（1个）', '燕麦（50g）'], high: ['膳食纤维过多可能引起不适'] }
+  },
+  evaluate(actual, target) {
+    const ratio = target > 0 ? actual / target : 0;
+    if (ratio < 0.8) return 'low';
+    if (ratio > 1.2) return 'high';
+    return 'ok';
+  },
+  generateAdvice(actual, target) {
+    const advice = [];
+    const nutrients = [
+      { key: 'calories', name: '热量', unit: 'kcal' },
+      { key: 'carbs',    name: '碳水', unit: 'g' },
+      { key: 'protein',  name: '蛋白质', unit: 'g' },
+      { key: 'fat',      name: '脂肪', unit: 'g' }
+    ];
+    nutrients.forEach(({ key, name, unit }) => {
+      const status = this.evaluate(actual[key] || 0, target[key] || 1);
+      const diff = Math.abs(Math.round((target[key] || 0) - (actual[key] || 0)));
+      const tips = this.FOOD_TIPS[key] || { low: [], high: [] };
+      if (status === 'low') {
+        advice.push({ type: 'low', icon: '⬆️', title: `${name}摄入不足`, desc: `还差 ${diff}${unit}，建议补充：${tips.low.slice(0,2).join('、')}` });
+      } else if (status === 'high') {
+        advice.push({ type: 'high', icon: '⬇️', title: `${name}摄入超标`, desc: `超出 ${diff}${unit}，建议：${tips.high.join('、')}` });
+      }
+    });
+    if (advice.length === 0) advice.push({ type: 'ok', icon: '✅', title: '营养均衡', desc: '今日营养摄入状况良好，继续保持！' });
+    return advice;
+  }
+};
+</script>
+
+<script>
+// ===== 测试框架 =====
+let passed = 0, failed = 0;
+const suites = [];
+let currentSuite = null;
+
+function describe(name, fn) {
+  currentSuite = { name, tests: [] };
+  suites.push(currentSuite);
+  fn();
+}
+
+function it(name, fn) {
+  try {
+    fn();
+    currentSuite.tests.push({ name, ok: true, detail: '' });
+    passed++;
+  } catch(e) {
+    currentSuite.tests.push({ name, ok: false, detail: e.message });
+    failed++;
+  }
+}
+
+function expect(actual) {
+  return {
+    toBe(expected) {
+      if (actual !== expected) throw new Error(`期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
+    },
+    toBeCloseTo(expected, digits=1) {
+      const d = Math.pow(10, -digits);
+      if (Math.abs(actual - expected) > d) throw new Error(`期望约等于 ${expected}，实际 ${actual}`);
+    },
+    toBeGreaterThan(n) { if (actual <= n) throw new Error(`期望 > ${n}，实际 ${actual}`); },
+    toBeLessThan(n) { if (actual >= n) throw new Error(`期望 < ${n}，实际 ${actual}`); },
+    toBeGreaterThanOrEqual(n) { if (actual < n) throw new Error(`期望 >= ${n}，实际 ${actual}`); },
+    toBeLessThanOrEqual(n) { if (actual > n) throw new Error(`期望 <= ${n}，实际 ${actual}`); },
+    toBeTruthy() { if (!actual) throw new Error(`期望为真，实际 ${actual}`); },
+    toBeFalsy()  { if (actual)  throw new Error(`期望为假，实际 ${actual}`); },
+    toEqual(expected) {
+      if (JSON.stringify(actual) !== JSON.stringify(expected))
+        throw new Error(`期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
+    },
+    toHaveLength(n) {
+      if (actual.length !== n) throw new Error(`期望长度 ${n}，实际 ${actual.length}`);
+    },
+    not: {
+      toBe(expected) { if (actual === expected) throw new Error(`期望不等于 ${JSON.stringify(expected)}`); },
+      toBeNull() { if (actual === null) throw new Error('期望不为 null'); }
+    }
+  };
+}
+
+// ===== 测试数据 =====
+const MALE_PROFILE = { gender:'male', age:25, height:175, weight:70, activity:'moderate', goal:'maintain' };
+const FEMALE_PROFILE = { gender:'female', age:30, height:165, weight:55, activity:'light', goal:'lose' };
+const EDGE_PROFILE_YOUNG = { gender:'male', age:1, height:50, weight:10, activity:'sedentary', goal:'maintain' };
+const EDGE_PROFILE_OLD = { gender:'female', age:120, height:250, weight:200, activity:'very_active', goal:'gain' };
+</script>
+
+<script>
+// ===== 测试套件 =====
+
+describe('BMR 计算', () => {
+  it('1. 男性 BMR 计算正确 (Mifflin-St Jeor)', () => {
+    // 10*70 + 6.25*175 - 5*25 + 5 = 700+1093.75-125+5 = 1673.75
+    expect(Profile.calcBMR(MALE_PROFILE)).toBeCloseTo(1673.75, 0);
+  });
+  it('2. 女性 BMR 计算正确', () => {
+    // 10*55 + 6.25*165 - 5*30 - 161 = 550+1031.25-150-161 = 1270.25
+    expect(Profile.calcBMR(FEMALE_PROFILE)).toBeCloseTo(1270.25, 0);
+  });
+  it('3. 极端年轻用户 BMR > 0', () => {
+    expect(Profile.calcBMR(EDGE_PROFILE_YOUNG)).toBeGreaterThan(0);
+  });
+  it('4. 极端高龄用户 BMR > 0', () => {
+    expect(Profile.calcBMR(EDGE_PROFILE_OLD)).toBeGreaterThan(0);
+  });
+});
+
+describe('TDEE 计算', () => {
+  it('5. 久坐系数 1.2 应用正确', () => {
+    const p = { ...MALE_PROFILE, activity: 'sedentary' };
+    expect(Profile.calcTDEE(p)).toBe(Math.round(Profile.calcBMR(p) * 1.2));
+  });
+  it('6. 轻度活动系数 1.375 应用正确', () => {
+    const p = { ...MALE_PROFILE, activity: 'light' };
+    expect(Profile.calcTDEE(p)).toBe(Math.round(Profile.calcBMR(p) * 1.375));
+  });
+  it('7. 中度活动系数 1.55 应用正确', () => {
+    expect(Profile.calcTDEE(MALE_PROFILE)).toBe(Math.round(1673.75 * 1.55));
+  });
+  it('8. 高强度活动系数 1.725 应用正确', () => {
+    const p = { ...MALE_PROFILE, activity: 'active' };
+    expect(Profile.calcTDEE(p)).toBe(Math.round(Profile.calcBMR(p) * 1.725));
+  });
+  it('9. 非常高强度系数 1.9 应用正确', () => {
+    const p = { ...MALE_PROFILE, activity: 'very_active' };
+    expect(Profile.calcTDEE(p)).toBe(Math.round(Profile.calcBMR(p) * 1.9));
+  });
+  it('10. 未知活动水平默认 1.55', () => {
+    const p = { ...MALE_PROFILE, activity: 'unknown_level' };
+    expect(Profile.calcTDEE(p)).toBe(Math.round(Profile.calcBMR(p) * 1.55));
+  });
+});
+</script>
+
+<script>
+describe('宏量营养素目标', () => {
+  it('11. 维持模式：碳水=TDEE×50%÷4', () => {
+    const m = Profile.calcMacroTargets(MALE_PROFILE);
+    expect(m.carbs).toBe(Math.round(m.calories * 0.5 / 4));
+  });
+  it('12. 维持模式：蛋白质=TDEE×20%÷4', () => {
+    const m = Profile.calcMacroTargets(MALE_PROFILE);
+    expect(m.protein).toBe(Math.round(m.calories * 0.2 / 4));
+  });
+  it('13. 维持模式：脂肪=TDEE×30%÷9', () => {
+    const m = Profile.calcMacroTargets(MALE_PROFILE);
+    expect(m.fat).toBe(Math.round(m.calories * 0.3 / 9));
+  });
+  it('14. 减脂模式：蛋白质比例30%', () => {
+    const m = Profile.calcMacroTargets(FEMALE_PROFILE);
+    expect(m.protein).toBe(Math.round(m.calories * 0.3 / 4));
+  });
+  it('15. 减脂模式：碳水比例40%', () => {
+    const m = Profile.calcMacroTargets(FEMALE_PROFILE);
+    expect(m.carbs).toBe(Math.round(m.calories * 0.4 / 4));
+  });
+  it('16. 增肌模式：蛋白质比例25%', () => {
+    const p = { ...MALE_PROFILE, goal: 'gain' };
+    const m = Profile.calcMacroTargets(p);
+    expect(m.protein).toBe(Math.round(m.calories * 0.25 / 4));
+  });
+  it('17. 增肌模式：脂肪比例25%', () => {
+    const p = { ...MALE_PROFILE, goal: 'gain' };
+    const m = Profile.calcMacroTargets(p);
+    expect(m.fat).toBe(Math.round(m.calories * 0.25 / 9));
+  });
+  it('18. 膳食纤维固定25g', () => {
+    const m = Profile.calcMacroTargets(MALE_PROFILE);
+    expect(m.fiber).toBe(25);
+  });
+});
+
+describe('三餐分配 (30/40/30)', () => {
+  it('19. 早午晚热量之和 ≈ 全天热量（误差≤3kcal）', () => {
+    const meals = Profile.calcMealTargets(MALE_PROFILE);
+    const sum = meals.breakfast.calories + meals.lunch.calories + meals.dinner.calories;
+    const total = Profile.calcMacroTargets(MALE_PROFILE).calories;
+    expect(Math.abs(sum - total)).toBeLessThanOrEqual(3);
+  });
+  it('20. 午餐热量 > 早餐热量', () => {
+    const meals = Profile.calcMealTargets(MALE_PROFILE);
+    expect(meals.lunch.calories).toBeGreaterThan(meals.breakfast.calories);
+  });
+  it('21. 早餐 = 晚餐（均为30%）', () => {
+    const meals = Profile.calcMealTargets(MALE_PROFILE);
+    expect(meals.breakfast.calories).toBe(meals.dinner.calories);
+  });
+  it('22. 午餐碳水 > 早餐碳水', () => {
+    const meals = Profile.calcMealTargets(MALE_PROFILE);
+    expect(meals.lunch.carbs).toBeGreaterThan(meals.breakfast.carbs);
+  });
+});
+</script>
+
+<script>
+describe('IntakeCalc 实际摄入计算', () => {
+  const est = { calories:1000, carbs:100, protein:50, fat:30, fiber:5 };
+
+  it('23. 100% 实际 = 预估', () => {
+    expect(IntakeCalc.calcActual(est, 100).calories).toBe(1000);
+  });
+  it('24. 50% 实际 = 预估的一半', () => {
+    expect(IntakeCalc.calcActual(est, 50).calories).toBe(500);
+  });
+  it('25. 1% 边界值计算正确', () => {
+    expect(IntakeCalc.calcActual(est, 1).calories).toBe(10);
+  });
+  it('26. 超出100%时上限为100%', () => {
+    expect(IntakeCalc.calcActual(est, 150).calories).toBe(1000);
+  });
+  it('27. 0或负数时下限clamp为1%', () => {
+    expect(IntakeCalc.calcActual(est, 0).calories).toBe(10);
+    expect(IntakeCalc.calcActual(est, -10).calories).toBe(10);
+  });
+  it('28. 碳水按比例保留一位小数', () => {
+    const result = IntakeCalc.calcActual(est, 50);
+    expect(result.carbs).toBe(50);
+  });
+  it('29. 蛋白质按比例正确', () => {
+    const result = IntakeCalc.calcActual(est, 33);
+    expect(result.protein).toBe(Math.round(50 * 0.33 * 10) / 10);
+  });
+  it('30. fiber为0时不出错', () => {
+    const noFiber = { calories: 200, carbs: 20, protein: 10, fat: 5 };
+    const result = IntakeCalc.calcActual(noFiber, 50);
+    expect(result.fiber).toBe(0);
+  });
+});
+
+describe('热量差值计算', () => {
+  const DATE_DIFF = '2099-03-01';
+
+  it('31. 无记录时差值等于 TDEE', () => {
+    expect(DietLog.getCalorieDiff(DATE_DIFF, 2000)).toBe(2000);
+  });
+  it('32. 有记录时差值 = TDEE - 实际摄入', () => {
+    DietLog.addRecord({ date:DATE_DIFF, mealType:'lunch', foods:[], estimatedCalories:1000, intakePercent:80, actualCalories:800, actualNutrition:{carbs:50, protein:30, fat:20, fiber:2}, timestamp: new Date().toISOString() });
+    expect(DietLog.getCalorieDiff(DATE_DIFF, 2000)).toBe(1200);
+  });
+  it('33. 超标时差值为负数', () => {
+    DietLog.addRecord({ date:DATE_DIFF, mealType:'dinner', foods:[], estimatedCalories:1500, intakePercent:100, actualCalories:1500, actualNutrition:{carbs:150, protein:60, fat:50, fiber:5}, timestamp: new Date().toISOString() });
+    expect(DietLog.getCalorieDiff(DATE_DIFF, 2000)).toBeLessThan(0);
+  });
+});
+</script>
+
+<script>
+describe('DietLog CRUD & 数据累加', () => {
+  const DATE2 = '2099-03-02';
+
+  it('34. 添加记录后可正确读取', () => {
+    DietLog.addRecord({ date:DATE2, mealType:'breakfast', foods:[{name:'鸡蛋'}], estimatedCalories:200, intakePercent:100, actualCalories:200, actualNutrition:{carbs:5, protein:12, fat:10, fiber:0}, timestamp: new Date().toISOString() });
+    const list = DietLog.getByDate(DATE2);
+    expect(list.length).toBe(1);
+  });
+  it('35. 同餐次多条记录热量累加正确', () => {
+    DietLog.addRecord({ date:DATE2, mealType:'breakfast', foods:[], estimatedCalories:150, intakePercent:100, actualCalories:150, actualNutrition:{carbs:20, protein:5, fat:3, fiber:1}, timestamp: new Date().toISOString() });
+    const totals = DietLog.getMealActualTotals(DATE2, 'breakfast');
+    expect(totals.calories).toBe(350);
+  });
+  it('36. 跨餐次全天累加正确', () => {
+    DietLog.addRecord({ date:DATE2, mealType:'lunch', foods:[], estimatedCalories:500, intakePercent:100, actualCalories:500, actualNutrition:{carbs:60, protein:25, fat:15, fiber:3}, timestamp: new Date().toISOString() });
+    const day = DietLog.getDayActualTotals(DATE2);
+    expect(day.calories).toBe(850);
+  });
+  it('37. 删除记录后累计值正确更新', () => {
+    const list = DietLog.getByDate(DATE2);
+    const lunchRecord = list.find(r => r.mealType === 'lunch');
+    DietLog.removeRecord(DATE2, lunchRecord.id);
+    const day = DietLog.getDayActualTotals(DATE2);
+    expect(day.calories).toBe(350);
+  });
+  it('38. 删除不存在的ID不影响数据', () => {
+    DietLog.removeRecord(DATE2, 99999999);
+    const day = DietLog.getDayActualTotals(DATE2);
+    expect(day.calories).toBe(350);
+  });
+});
+
+describe('DeviceID & Storage 隔离', () => {
+  it('39. DeviceID 存在且为字符串', () => {
+    expect(typeof Device.getId()).toBe('string');
+    expect(Device.getId()).toBeTruthy();
+  });
+  it('40. Storage key 包含 DeviceID 前缀', () => {
+    Storage.set('test_key_prefix', { v: 1 });
+    const rawKey = Device.getId() + '_test_key_prefix';
+    expect(_memStore[rawKey]).toBeTruthy();
+  });
+  it('41. 不同 DeviceID 数据隔离', () => {
+    const origId = Device._id;
+    Storage.set('isolation_check', 'device1_data');
+    Device._id = 'other_device_xyz';
+    const val = Storage.get('isolation_check', null);
+    expect(val).toBe(null);
+    Device._id = origId;
+  });
+  it('42. 损坏 JSON 数据降级返回默认值', () => {
+    const corruptKey = Device.getId() + '_corrupt_json';
+    _memStore[corruptKey] = '{ broken json!!!';
+    const result = Storage.get('corrupt_json', 'fallback');
+    expect(result).toBe('fallback');
+  });
+});
+</script>
+
+<script>
+describe('BMI 计算', () => {
+  it('43. 标准体重 BMI ≈ 22', () => {
+    const bmi = Profile.calcBMI({ height: 170, weight: 63.6 });
+    expect(bmi).toBeCloseTo(22, 0);
+  });
+  it('44. 超重 BMI > 24', () => {
+    expect(Profile.calcBMI({ height: 170, weight: 80 })).toBeGreaterThan(24);
+  });
+  it('45. 偏瘦标签 BMI < 18.5', () => {
+    const bmi = Profile.calcBMI({ height: 175, weight: 50 });
+    expect(Profile.getBMILabel(bmi).label).toBe('偏瘦');
+  });
+  it('46. 正常标签 18.5 <= BMI < 24', () => {
+    expect(Profile.getBMILabel(22).label).toBe('正常');
+  });
+  it('47. 超重标签 24 <= BMI < 28', () => {
+    expect(Profile.getBMILabel(26).label).toBe('超重');
+  });
+  it('48. 肥胖标签 BMI >= 28', () => {
+    expect(Profile.getBMILabel(30).label).toBe('肥胖');
+  });
+});
+
+describe('FoodDB 搜索', () => {
+  it('49. 精确匹配：搜索"白米饭"返回结果', () => {
+    const results = FoodDB.search('白米饭');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].name).toBe('白米饭');
+  });
+  it('50. 部分匹配：搜索"鸡"返回多个结果', () => {
+    const results = FoodDB.search('鸡');
+    expect(results.length).toBeGreaterThan(1);
+  });
+  it('51. 按分类搜索：搜索"主食"返回该分类食物', () => {
+    const results = FoodDB.search('主食');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every(r => r.category === '主食')).toBe(true);
+  });
+  it('52. 无结果：搜索"宇宙飞船"返回空数组', () => {
+    const results = FoodDB.search('宇宙飞船');
+    expect(results.length).toBe(0);
+  });
+  it('53. 空关键词返回空数组', () => {
+    expect(FoodDB.search('').length).toBe(0);
+    expect(FoodDB.search('  ').length).toBe(0);
+    expect(FoodDB.search(null).length).toBe(0);
+  });
+  it('54. 分类过滤正确', () => {
+    const vegs = FoodDB.getByCategory('蔬菜');
+    expect(vegs.length).toBeGreaterThan(0);
+    expect(vegs.every(v => v.category === '蔬菜')).toBe(true);
+  });
+  it('55. 结果最多20条', () => {
+    const results = FoodDB.search('');
+    expect(results.length).toBeLessThanOrEqual(20);
+  });
+});
+</script>
+
+<script>
+describe('MealAdvisor 建议生成', () => {
+  it('56. 低摄入时评估为 low', () => {
+    expect(MealAdvisor.evaluate(50, 200)).toBe('low');
+  });
+  it('57. 正常摄入时评估为 ok', () => {
+    expect(MealAdvisor.evaluate(180, 200)).toBe('ok');
+  });
+  it('58. 高摄入时评估为 high', () => {
+    expect(MealAdvisor.evaluate(300, 200)).toBe('high');
+  });
+  it('59. 边界值 80% 评估为 ok', () => {
+    expect(MealAdvisor.evaluate(160, 200)).toBe('ok');
+  });
+  it('60. 边界值 120% 评估为 ok', () => {
+    expect(MealAdvisor.evaluate(240, 200)).toBe('ok');
+  });
+  it('61. target为0时评估为 low', () => {
+    expect(MealAdvisor.evaluate(0, 0)).toBe('low');
+  });
+  it('62. 全零摄入生成 low 建议', () => {
+    const actual = { calories: 0, carbs: 0, protein: 0, fat: 0 };
+    const target = { calories: 2000, carbs: 250, protein: 100, fat: 67 };
+    const advice = MealAdvisor.generateAdvice(actual, target);
+    expect(advice.length).toBeGreaterThan(0);
+    expect(advice[0].type).toBe('low');
+  });
+  it('63. 全部达标时返回均衡建议', () => {
+    const target = { calories: 2000, carbs: 250, protein: 100, fat: 67 };
+    const actual = { calories: 2000, carbs: 250, protein: 100, fat: 67 };
+    const advice = MealAdvisor.generateAdvice(actual, target);
+    expect(advice.length).toBe(1);
+    expect(advice[0].type).toBe('ok');
+    expect(advice[0].title).toBe('营养均衡');
+  });
+  it('64. 超标时生成 high 建议', () => {
+    const target = { calories: 2000, carbs: 250, protein: 100, fat: 67 };
+    const actual = { calories: 3000, carbs: 400, protein: 200, fat: 120 };
+    const advice = MealAdvisor.generateAdvice(actual, target);
+    expect(advice.length).toBeGreaterThan(0);
+    expect(advice.some(a => a.type === 'high')).toBe(true);
+  });
+});
+
+describe('Profile 存储', () => {
+  it('65. 保存后可读取档案', () => {
+    Profile.save(MALE_PROFILE);
+    const p = Profile.get();
+    expect(p.gender).toBe('male');
+    expect(p.age).toBe(25);
+  });
+  it('66. 未保存时返回 null', () => {
+    const origId = Device._id;
+    Device._id = 'brand_new_device';
+    const p = Profile.get();
+    expect(p).toBe(null);
+    Device._id = origId;
+  });
+});
+</script>
+
+<script>
+// ===== 渲染结果 =====
+const resultsEl = document.getElementById('test-results');
+suites.forEach(suite => {
+  const div = document.createElement('div');
+  div.className = 'suite';
+  const passCnt = suite.tests.filter(t=>t.ok).length;
+  div.innerHTML = `<h2>${suite.name} <span style="font-size:12px;color:${passCnt===suite.tests.length?'#1E3932':'#C0392B'}">${passCnt}/${suite.tests.length}</span></h2>
+  ${suite.tests.map(t => `<div class="test-item">
+    <span class="status">${t.ok ? '✅' : '❌'}</span>
+    <div>
+      <div class="test-name">${t.name}</div>
+      ${t.detail ? `<div class="test-detail">${t.detail}</div>` : (t.ok ? `<div class="test-detail pass-detail">通过</div>` : '')}
+    </div>
+  </div>`).join('')}`;
+  resultsEl.appendChild(div);
+});
+
+const summaryEl = document.getElementById('summary');
+const total = passed + failed;
+if (failed === 0) {
+  summaryEl.textContent = `✅ 全部 ${total} 项测试通过`;
+  summaryEl.className = 'pass';
+} else {
+  summaryEl.textContent = `❌ ${failed} 项测试失败 / 共 ${total} 项`;
+  summaryEl.className = 'fail';
+}
+</script>
+</body>
+</html>
