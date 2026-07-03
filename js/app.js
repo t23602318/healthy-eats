@@ -3,7 +3,72 @@
  * HealthyEats 健康饮食 App
  */
 
-// ===== DeviceID 管理 =====
+// ===== 账号系统 =====
+const Auth = {
+  USERS_KEY: '_healthyeats_users',
+  SESSION_KEY: '_healthyeats_session',
+
+  _getUsers() {
+    try { return JSON.parse(localStorage.getItem(this.USERS_KEY) || '{}'); }
+    catch { return {}; }
+  },
+
+  _saveUsers(users) {
+    localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
+  },
+
+  _hash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return 'h_' + Math.abs(hash).toString(36);
+  },
+
+  register(username, password) {
+    if (!username || username.length < 2) throw new Error('账号名至少2个字符');
+    if (!password || password.length < 4) throw new Error('密码至少4个字符');
+    const users = this._getUsers();
+    if (users[username]) throw new Error('账号已存在');
+    users[username] = this._hash(password);
+    this._saveUsers(users);
+    this.login(username, password);
+    return true;
+  },
+
+  login(username, password) {
+    const users = this._getUsers();
+    if (!users[username]) throw new Error('账号不存在');
+    if (users[username] !== this._hash(password)) throw new Error('密码错误');
+    localStorage.setItem(this.SESSION_KEY, username);
+    return true;
+  },
+
+  logout() {
+    localStorage.removeItem(this.SESSION_KEY);
+  },
+
+  getCurrentUser() {
+    return localStorage.getItem(this.SESSION_KEY) || null;
+  },
+
+  isLoggedIn() {
+    return !!this.getCurrentUser();
+  },
+
+  // 登录检查，未登录则跳转到登录页
+  requireLogin() {
+    if (!this.isLoggedIn()) {
+      location.href = 'login.html';
+      return false;
+    }
+    return true;
+  }
+};
+
+// ===== DeviceID 管理（保留兼容） =====
 const Device = {
   _id: null,
   getId() {
@@ -20,9 +85,12 @@ const Device = {
   }
 };
 
-// ===== 数据存储（带 DeviceID 前缀） =====
+// ===== 数据存储（带用户名前缀） =====
 const Storage = {
-  _key(key) { return Device.getId() + '_' + key; },
+  _key(key) {
+    const user = Auth.getCurrentUser();
+    return (user || '_anonymous') + '_' + key;
+  },
   get(key, defaultVal = null) {
     try {
       const v = localStorage.getItem(this._key(key));

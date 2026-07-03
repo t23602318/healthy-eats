@@ -29,16 +29,70 @@
 <script>
 // ===== 内联核心逻辑（与 app.js / food-db.js 保持完全一致）=====
 
-// 模拟 Device
+// 模拟 Auth
+const _authStore = {};
+const Auth = {
+  USERS_KEY: '_healthyeats_users',
+  SESSION_KEY: '_healthyeats_session',
+  _currentUser: null,
+
+  _getUsers() {
+    try { return JSON.parse(_authStore[this.USERS_KEY] || '{}'); }
+    catch { return {}; }
+  },
+  _saveUsers(users) {
+    _authStore[this.USERS_KEY] = JSON.stringify(users);
+  },
+  _hash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return 'h_' + Math.abs(hash).toString(36);
+  },
+  register(username, password) {
+    if (!username || username.length < 2) throw new Error('账号名至少2个字符');
+    if (!password || password.length < 4) throw new Error('密码至少4个字符');
+    const users = this._getUsers();
+    if (users[username]) throw new Error('账号已存在');
+    users[username] = this._hash(password);
+    this._saveUsers(users);
+    this.login(username, password);
+    return true;
+  },
+  login(username, password) {
+    const users = this._getUsers();
+    if (!users[username]) throw new Error('账号不存在');
+    if (users[username] !== this._hash(password)) throw new Error('密码错误');
+    this._currentUser = username;
+    return true;
+  },
+  logout() {
+    this._currentUser = null;
+  },
+  getCurrentUser() {
+    return this._currentUser || null;
+  },
+  isLoggedIn() {
+    return !!this.getCurrentUser();
+  }
+};
+
+// 模拟 Device (保留兼容)
 const Device = {
   _id: 'test_device_001',
   getId() { return this._id; }
 };
 
-// 模拟 Storage（内存模式）
+// 模拟 Storage（内存模式，使用 Auth.getCurrentUser 作前缀）
 const _memStore = {};
 const Storage = {
-  _key(key) { return Device.getId() + '_' + key; },
+  _key(key) {
+    const user = Auth.getCurrentUser();
+    return (user || '_anonymous') + '_' + key;
+  },
   get(key, defaultVal = null) {
     try {
       const v = _memStore[this._key(key)];
@@ -301,6 +355,9 @@ const MALE_PROFILE = { gender:'male', age:25, height:175, weight:70, activity:'m
 const FEMALE_PROFILE = { gender:'female', age:30, height:165, weight:55, activity:'light', goal:'lose' };
 const EDGE_PROFILE_YOUNG = { gender:'male', age:1, height:50, weight:10, activity:'sedentary', goal:'maintain' };
 const EDGE_PROFILE_OLD = { gender:'female', age:120, height:250, weight:200, activity:'very_active', goal:'gain' };
+
+// 初始化测试用户（让 Storage 使用用户名前缀正常工作）
+Auth.register('testuser', 'test1234');
 </script>
 
 <script>
@@ -495,29 +552,58 @@ describe('DietLog CRUD & 数据累加', () => {
   });
 });
 
-describe('DeviceID & Storage 隔离', () => {
-  it('39. DeviceID 存在且为字符串', () => {
-    expect(typeof Device.getId()).toBe('string');
-    expect(Device.getId()).toBeTruthy();
+describe('Auth 账号系统', () => {
+  it('39. 注册成功后自动登录', () => {
+    // testuser 已在上方注册
+    expect(Auth.isLoggedIn()).toBe(true);
+    expect(Auth.getCurrentUser()).toBe('testuser');
   });
-  it('40. Storage key 包含 DeviceID 前缀', () => {
+  it('40. 重复注册抛出错误', () => {
+    let err = '';
+    try { Auth.register('testuser', 'other1234'); } catch(e) { err = e.message; }
+    expect(err).toBe('账号已存在');
+  });
+  it('41. 账号名太短抛出错误', () => {
+    let err = '';
+    try { Auth.register('a', 'test1234'); } catch(e) { err = e.message; }
+    expect(err).toBe('账号名至少2个字符');
+  });
+  it('42. 密码太短抛出错误', () => {
+    let err = '';
+    try { Auth.register('newuser', '12'); } catch(e) { err = e.message; }
+    expect(err).toBe('密码至少4个字符');
+  });
+});
+
+describe('Storage 用户隔离', () => {
+  it('43-orig. Storage key 包含用户名前缀', () => {
     Storage.set('test_key_prefix', { v: 1 });
-    const rawKey = Device.getId() + '_test_key_prefix';
+    const rawKey = 'testuser_test_key_prefix';
     expect(_memStore[rawKey]).toBeTruthy();
   });
-  it('41. 不同 DeviceID 数据隔离', () => {
-    const origId = Device._id;
-    Storage.set('isolation_check', 'device1_data');
-    Device._id = 'other_device_xyz';
+  it('44-orig. 不同用户数据隔离', () => {
+    Storage.set('isolation_check', 'user1_data');
+    // 切换到另一个用户
+    Auth._currentUser = 'anotheruser';
     const val = Storage.get('isolation_check', null);
     expect(val).toBe(null);
-    Device._id = origId;
+    // 切换回来
+    Auth._currentUser = 'testuser';
+    const val2 = Storage.get('isolation_check', null);
+    expect(val2).toBe('user1_data');
   });
-  it('42. 损坏 JSON 数据降级返回默认值', () => {
-    const corruptKey = Device.getId() + '_corrupt_json';
+  it('45-orig. 损坏 JSON 数据降级返回默认值', () => {
+    const corruptKey = 'testuser_corrupt_json';
     _memStore[corruptKey] = '{ broken json!!!';
     const result = Storage.get('corrupt_json', 'fallback');
     expect(result).toBe('fallback');
+  });
+  it('46-orig. 登出后使用 _anonymous 前缀', () => {
+    Auth.logout();
+    Storage.set('anon_test', 'anon_data');
+    expect(_memStore['_anonymous_anon_test']).toBeTruthy();
+    // 重新登录
+    Auth._currentUser = 'testuser';
   });
 });
 </script>
@@ -633,12 +719,12 @@ describe('Profile 存储', () => {
     expect(p.gender).toBe('male');
     expect(p.age).toBe(25);
   });
-  it('66. 未保存时返回 null', () => {
-    const origId = Device._id;
-    Device._id = 'brand_new_device';
+  it('66. 不同用户未保存时返回 null', () => {
+    const origUser = Auth._currentUser;
+    Auth._currentUser = 'brand_new_user';
     const p = Profile.get();
     expect(p).toBe(null);
-    Device._id = origId;
+    Auth._currentUser = origUser;
   });
 });
 </script>

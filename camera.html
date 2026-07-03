@@ -26,7 +26,7 @@
 <div id="panel-photo">
   <!-- 拍照区域 -->
   <div class="ai-photo-area" id="ai-photo-area">
-    <input type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" capture="environment" id="ai-camera-input" class="camera-input">
+    <input type="file" accept="image/*" id="ai-camera-input" class="camera-input">
     <div class="ai-photo-placeholder" id="ai-photo-placeholder">
       <div class="ai-photo-icon">📷</div>
       <div class="ai-photo-hint">拍照或选择图片，AI 自动识别食物</div>
@@ -36,7 +36,7 @@
       <img id="ai-preview-img" src="" alt="预览">
       <div class="ai-photo-actions">
         <button class="btn btn-secondary" onclick="document.getElementById('ai-camera-input').click()">重新选择</button>
-        <button class="btn btn-primary" id="btn-recognize" onclick="startRecognize()">🔍 开始识别</button>
+        <button class="btn btn-primary" id="btn-recognize" onclick="startRecognize()">🔄 重新识别</button>
       </div>
     </div>
   </div>
@@ -163,6 +163,9 @@
 <script src="js/app.js"></script>
 <script src="js/food-db.js"></script>
 <script>
+// ===== 登录检查 =====
+if (!Auth.requireLogin()) throw new Error('redirect');
+
 // ===== Tab 切换 =====
 function switchTab(tab) {
   document.getElementById('tab-photo').classList.toggle('active', tab === 'photo');
@@ -198,6 +201,8 @@ document.getElementById('ai-camera-input').addEventListener('change', async e =>
     // Reset results
     document.getElementById('ai-results').style.display = 'none';
     aiRecognizedData = null;
+    // 自动开始识别
+    startRecognize();
   } catch (err) {
     UI.showToast(err.message);
   }

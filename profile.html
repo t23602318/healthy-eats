@@ -133,6 +133,18 @@
   </div>
 </div>
 
+<!-- 账号信息 -->
+<div class="card" style="margin: 14px 16px;">
+  <div class="card-title">👤 账号信息</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="font-size:15px;font-weight:500;" id="account-username"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">数据与账号绑定，同设备切换账号可查看不同数据</div>
+    </div>
+    <button class="btn btn-danger" onclick="doLogout()" style="padding:10px 18px;font-size:13px;">退出登录</button>
+  </div>
+</div>
+
 <!-- 设备信息 -->
 <div class="card" style="margin-bottom:20px;">
   <div class="card-title">📱 设备信息</div>
@@ -161,6 +173,9 @@
 
 <script src="js/app.js"></script>
 <script>
+// ===== 登录检查 =====
+if (!Auth.requireLogin()) throw new Error('redirect');
+
 const GOAL_LABELS = { lose: '🎯 减脂模式', maintain: '⚖️ 维持体重', gain: '💪 增肌模式' };
 const GOAL_DISPLAY = { lose: '减脂', maintain: '维持体重', gain: '增肌' };
 const GENDER_DISPLAY = { male: '男', female: '女' };
@@ -498,6 +513,14 @@ function saveProfile() {
 // ===== Initialize =====
 loadForm();
 renderAvatar();
+
+// 显示账号名
+document.getElementById('account-username').textContent = '账号：' + (Auth.getCurrentUser() || '未登录');
+
+function doLogout() {
+  Auth.logout();
+  location.href = 'login.html';
+}
 
 if (Profile.get()) {
   // Show read view
