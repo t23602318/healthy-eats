@@ -145,15 +145,6 @@
   </div>
 </div>
 
-<!-- 设备信息 -->
-<div class="card" style="margin-bottom:20px;">
-  <div class="card-title">📱 设备信息</div>
-  <div style="font-size:13px;color:var(--text-secondary);word-break:break-all;">
-    设备ID：<span id="device-id-display" style="color:var(--text-primary);font-size:12px;"></span>
-  </div>
-  <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">数据已与本设备绑定，重新访问不会丢失</div>
-</div>
-
 <!-- AI 设置 -->
 <!-- 底部导航 -->
 <nav class="bottom-nav">
@@ -424,7 +415,6 @@ function loadForm() {
     document.getElementById('f-goal').value     = p.goal || 'maintain';
     renderStats(p);
   }
-  document.getElementById('device-id-display').textContent = Device.getId();
 }
 
 function renderStats(p) {
