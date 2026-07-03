@@ -16,68 +16,132 @@
   </div>
 </div>
 
-<!-- 拍照留存（折叠） -->
-<button class="photo-toggle" id="photo-toggle" onclick="togglePhoto()">📷 拍照留存（可选）</button>
-<div class="photo-section" id="photo-section">
-  <input type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" capture="environment" id="camera-input" class="camera-input">
-  <button class="btn btn-secondary" onclick="document.getElementById('camera-input').click()" style="min-height:44px;">选择照片</button>
-  <div id="photo-preview"></div>
+<!-- Tab 切换 -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-photo" onclick="switchTab('photo')">📷 拍照识别</button>
+  <button class="tab-btn" id="tab-manual" onclick="switchTab('manual')">🔍 手动选择</button>
 </div>
 
-<!-- 搜索栏 -->
-<div class="search-section">
-  <div class="search-input-wrap">
-    <span class="search-icon">🔍</span>
-    <input type="text" id="search-input" placeholder="搜索食物..." autocomplete="off">
+<!-- ============ Tab 1: 拍照识别 ============ -->
+<div id="panel-photo">
+  <!-- 拍照区域 -->
+  <div class="ai-photo-area" id="ai-photo-area">
+    <input type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" capture="environment" id="ai-camera-input" class="camera-input">
+    <div class="ai-photo-placeholder" id="ai-photo-placeholder">
+      <div class="ai-photo-icon">📷</div>
+      <div class="ai-photo-hint">拍照或选择图片，AI 自动识别食物</div>
+      <button class="btn btn-primary btn-lg" onclick="document.getElementById('ai-camera-input').click()">拍照 / 选图</button>
+    </div>
+    <div class="ai-photo-preview" id="ai-photo-preview" style="display:none;">
+      <img id="ai-preview-img" src="" alt="预览">
+      <div class="ai-photo-actions">
+        <button class="btn btn-secondary" onclick="document.getElementById('ai-camera-input').click()">重新选择</button>
+        <button class="btn btn-primary" id="btn-recognize" onclick="startRecognize()">🔍 开始识别</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 识别结果 -->
+  <div id="ai-results" style="display:none;">
+    <div class="card" style="margin:14px 16px;">
+      <div class="card-title">🍽️ 识别结果</div>
+      <div id="ai-description" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;"></div>
+      <div id="ai-food-list"></div>
+      <div class="divider"></div>
+      <div id="ai-nutrition-summary"></div>
+    </div>
+
+    <!-- 百分比 -->
+    <div class="percent-section" style="margin:14px 16px;">
+      <div class="percent-title">实际吃了多少？</div>
+      <div class="percent-slider-row">
+        <span style="font-size:13px;color:var(--text-secondary)">1%</span>
+        <input type="range" min="1" max="100" value="100" class="percent-slider" id="ai-percent-slider">
+        <span style="font-size:13px;color:var(--text-secondary)">100%</span>
+        <input type="number" min="1" max="100" value="100" class="percent-input-box" id="ai-percent-input">
+        <span style="font-size:14px;color:var(--text-secondary)">%</span>
+      </div>
+      <div class="actual-cal-display">
+        <div class="ac-label">实际摄入热量</div>
+        <div><span class="ac-val" id="ai-actual-cal">0</span> <span class="ac-unit">kcal</span></div>
+        <div id="ai-actual-macros" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- 餐次选择 -->
+    <div class="card" style="margin:0 16px 14px;">
+      <div class="card-title">📌 记录到哪一餐？</div>
+      <div style="display:flex;gap:8px;flex-wrap:nowrap;">
+        <button class="btn btn-secondary" id="ai-btn-breakfast" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectAIMeal('breakfast')">🌅 早餐</button>
+        <button class="btn btn-secondary" id="ai-btn-lunch" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectAIMeal('lunch')">☀️ 午餐</button>
+        <button class="btn btn-secondary" id="ai-btn-dinner" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectAIMeal('dinner')">🌙 晚餐</button>
+      </div>
+    </div>
+
+    <div style="padding:0 16px 20px;">
+      <button class="btn btn-primary btn-full btn-lg" onclick="saveAIRecord()">✅ 记录到餐次</button>
+    </div>
   </div>
 </div>
 
-<!-- 分类标签 -->
-<div class="category-pills" id="category-pills"></div>
+<!-- ============ Tab 2: 手动选择 ============ -->
+<div id="panel-manual" style="display:none;">
 
-<!-- 食物搜索结果列表 -->
-<div class="food-results" id="food-results"></div>
+  <!-- 搜索栏 -->
+  <div class="search-section">
+    <div class="search-input-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="搜索食物..." autocomplete="off">
+    </div>
+  </div>
 
-<!-- 已选食物列表 -->
-<div class="selected-section" id="selected-section">
-  <div class="selected-header">
-    <div class="selected-title">🍽️ 已选食物</div>
-    <div class="selected-total" id="selected-total">0 kcal</div>
-  </div>
-  <div id="selected-list">
-    <div class="selected-empty">点击上方食物添加到列表</div>
-  </div>
-</div>
+  <!-- 分类标签 -->
+  <div class="category-pills" id="category-pills"></div>
 
-<!-- 实际摄入百分比 -->
-<div class="percent-section" style="margin:14px 16px;">
-  <div class="percent-title">实际吃了多少？</div>
-  <div class="percent-slider-row">
-    <span style="font-size:13px;color:var(--text-secondary)">1%</span>
-    <input type="range" min="1" max="100" value="100" class="percent-slider" id="percent-slider">
-    <span style="font-size:13px;color:var(--text-secondary)">100%</span>
-    <input type="number" min="1" max="100" value="100" class="percent-input-box" id="percent-input">
-    <span style="font-size:14px;color:var(--text-secondary)">%</span>
-  </div>
-  <div class="actual-cal-display">
-    <div class="ac-label">实际摄入热量</div>
-    <div><span class="ac-val" id="actual-cal-val">0</span> <span class="ac-unit">kcal</span></div>
-    <div id="actual-macro-vals" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
-  </div>
-</div>
+  <!-- 食物搜索结果列表 -->
+  <div class="food-results" id="food-results"></div>
 
-<!-- 餐次选择 -->
-<div class="card" style="margin:0 16px 14px;">
-  <div class="card-title">📌 记录到哪一餐？</div>
-  <div style="display:flex;gap:10px;">
-    <button class="btn btn-secondary" id="btn-breakfast" onclick="selectMeal('breakfast')">🌅 早餐</button>
-    <button class="btn btn-secondary" id="btn-lunch" onclick="selectMeal('lunch')">☀️ 午餐</button>
-    <button class="btn btn-secondary" id="btn-dinner" onclick="selectMeal('dinner')">🌙 晚餐</button>
+  <!-- 已选食物列表 -->
+  <div class="selected-section" id="selected-section">
+    <div class="selected-header">
+      <div class="selected-title">🍽️ 已选食物</div>
+      <div class="selected-total" id="selected-total">0 kcal</div>
+    </div>
+    <div id="selected-list">
+      <div class="selected-empty">点击上方食物添加到列表</div>
+    </div>
   </div>
-</div>
 
-<div style="padding:0 16px 20px;">
-  <button class="btn btn-primary btn-full btn-lg" onclick="saveRecord()">✅ 记录到餐次</button>
+  <!-- 实际摄入百分比 -->
+  <div class="percent-section" style="margin:14px 16px;">
+    <div class="percent-title">实际吃了多少？</div>
+    <div class="percent-slider-row">
+      <span style="font-size:13px;color:var(--text-secondary)">1%</span>
+      <input type="range" min="1" max="100" value="100" class="percent-slider" id="percent-slider">
+      <span style="font-size:13px;color:var(--text-secondary)">100%</span>
+      <input type="number" min="1" max="100" value="100" class="percent-input-box" id="percent-input">
+      <span style="font-size:14px;color:var(--text-secondary)">%</span>
+    </div>
+    <div class="actual-cal-display">
+      <div class="ac-label">实际摄入热量</div>
+      <div><span class="ac-val" id="actual-cal-val">0</span> <span class="ac-unit">kcal</span></div>
+      <div id="actual-macro-vals" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
+    </div>
+  </div>
+
+  <!-- 餐次选择 -->
+  <div class="card" style="margin:0 16px 14px;">
+    <div class="card-title">📌 记录到哪一餐？</div>
+    <div style="display:flex;gap:8px;flex-wrap:nowrap;">
+      <button class="btn btn-secondary" id="btn-breakfast" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectMeal('breakfast')">🌅 早餐</button>
+      <button class="btn btn-secondary" id="btn-lunch" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectMeal('lunch')">☀️ 午餐</button>
+      <button class="btn btn-secondary" id="btn-dinner" style="flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;" onclick="selectMeal('dinner')">🌙 晚餐</button>
+    </div>
+  </div>
+
+  <div style="padding:0 16px 20px;">
+    <button class="btn btn-primary btn-full btn-lg" onclick="saveRecord()">✅ 记录到餐次</button>
+  </div>
 </div>
 
 <!-- 底部导航 -->
@@ -99,34 +163,174 @@
 <script src="js/app.js"></script>
 <script src="js/food-db.js"></script>
 <script>
-// ===== 状态 =====
-let selectedFoods = [];
-let currentMeal = getDefaultMealType();
-let thumbnailDataUrl = '';
-let activeCategory = null;
-
-const urlParams = new URLSearchParams(location.search);
-if (urlParams.get('meal')) currentMeal = urlParams.get('meal');
-
-// ===== 拍照 =====
-function togglePhoto() {
-  const section = document.getElementById('photo-section');
-  section.classList.toggle('show');
+// ===== Tab 切换 =====
+function switchTab(tab) {
+  document.getElementById('tab-photo').classList.toggle('active', tab === 'photo');
+  document.getElementById('tab-manual').classList.toggle('active', tab === 'manual');
+  document.getElementById('panel-photo').style.display = tab === 'photo' ? '' : 'none';
+  document.getElementById('panel-manual').style.display = tab === 'manual' ? '' : 'none';
 }
 
-document.getElementById('camera-input').addEventListener('change', async e => {
+// ===== URL 参数 =====
+const urlParams = new URLSearchParams(location.search);
+const paramMeal = urlParams.get('meal');
+const paramTab = urlParams.get('tab');
+
+// ============================================================
+//  Tab 1: 拍照识别
+// ============================================================
+let aiImageDataUrl = '';
+let aiRecognizedData = null;
+let aiCurrentMeal = paramMeal || getDefaultMealType();
+
+// 拍照/选图
+document.getElementById('ai-camera-input').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
   try {
     const dataUrl = await ImageUtil.compressImage(file);
-    thumbnailDataUrl = await ImageUtil.makeThumbnail(dataUrl);
-    document.getElementById('photo-preview').innerHTML =
-      `<img src="${dataUrl}" class="photo-thumb" alt="照片">`;
+    const resized = await ImageUtil.resizeForAI(dataUrl);
+    aiImageDataUrl = resized;
+    // Show preview
+    document.getElementById('ai-photo-placeholder').style.display = 'none';
+    document.getElementById('ai-photo-preview').style.display = '';
+    document.getElementById('ai-preview-img').src = resized;
+    // Reset results
+    document.getElementById('ai-results').style.display = 'none';
+    aiRecognizedData = null;
   } catch (err) {
     UI.showToast(err.message);
   }
   e.target.value = '';
 });
+
+// 开始识别
+async function startRecognize() {
+  if (!aiImageDataUrl) { UI.showToast('请先选择图片'); return; }
+
+  UI.showLoading('AI 识别中...');
+
+  try {
+    let result;
+    result = await FoodAI.recognizeFood(aiImageDataUrl);
+    aiRecognizedData = result;
+    renderAIResults(result);
+  } catch (err) {
+    if (err.message === 'NO_FOOD') {
+      UI.showToast('未识别到食物，请换一张图片');
+    } else {
+      UI.showToast('识别失败：' + err.message);
+    }
+  } finally {
+    UI.hideLoading();
+  }
+}
+
+// 渲染识别结果
+function renderAIResults(data) {
+  document.getElementById('ai-results').style.display = '';
+  document.getElementById('ai-description').textContent = data.description || '';
+
+  // Food list table
+  document.getElementById('ai-food-list').innerHTML = data.foods.map(f =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:14px;font-weight:500;">${f.name}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">${f.amount}${f.unit}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:var(--accent);">${f.calories} kcal</div>
+        <div style="font-size:11px;color:var(--text-secondary);">蛋白${f.protein}g · 碳水${f.carbs}g · 脂肪${f.fat}g</div>
+      </div>
+    </div>`
+  ).join('');
+
+  // Nutrition summary
+  const t = data.total;
+  document.getElementById('ai-nutrition-summary').innerHTML =
+    `<div style="display:flex;justify-content:space-around;text-align:center;padding:8px 0;">
+      <div><div style="font-size:20px;font-weight:700;color:var(--primary);">${t.calories}</div><div style="font-size:11px;color:var(--text-secondary);">总热量 kcal</div></div>
+      <div><div style="font-size:16px;font-weight:600;">${t.protein}</div><div style="font-size:11px;color:var(--text-secondary);">蛋白质 g</div></div>
+      <div><div style="font-size:16px;font-weight:600;">${t.carbs}</div><div style="font-size:11px;color:var(--text-secondary);">碳水 g</div></div>
+      <div><div style="font-size:16px;font-weight:600;">${t.fat}</div><div style="font-size:11px;color:var(--text-secondary);">脂肪 g</div></div>
+    </div>`;
+
+  updateAIActualDisplay();
+  selectAIMeal(aiCurrentMeal);
+}
+
+// AI 百分比联动
+const aiSlider = document.getElementById('ai-percent-slider');
+const aiPercentInput = document.getElementById('ai-percent-input');
+
+function updateAIActualDisplay() {
+  if (!aiRecognizedData) return;
+  const t = aiRecognizedData.total;
+  const pct = Math.max(1, Math.min(100, parseInt(aiPercentInput.value) || 100));
+  const actual = IntakeCalc.calcActual(t, pct);
+  document.getElementById('ai-actual-cal').textContent = actual.calories;
+  document.getElementById('ai-actual-macros').textContent =
+    `碳水 ${actual.carbs}g · 蛋白质 ${actual.protein}g · 脂肪 ${actual.fat}g · 纤维 ${actual.fiber}g`;
+}
+
+aiSlider.addEventListener('input', () => { aiPercentInput.value = aiSlider.value; updateAIActualDisplay(); });
+aiPercentInput.addEventListener('input', () => {
+  let v = parseInt(aiPercentInput.value) || 1;
+  v = Math.max(1, Math.min(100, v));
+  aiSlider.value = v; aiPercentInput.value = v;
+  updateAIActualDisplay();
+});
+
+// AI 餐次选择
+function selectAIMeal(meal) {
+  aiCurrentMeal = meal;
+  ['breakfast','lunch','dinner'].forEach(m => {
+    document.getElementById('ai-btn-'+m).className = 'btn ' + (m === meal ? 'btn-primary' : 'btn-secondary');
+    document.getElementById('ai-btn-'+m).style.cssText = 'flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;';
+  });
+}
+selectAIMeal(aiCurrentMeal);
+
+// 保存 AI 识别记录
+async function saveAIRecord() {
+  if (!aiRecognizedData) { UI.showToast('请先完成识别'); return; }
+
+  const t = aiRecognizedData.total;
+  const pct = Math.max(1, Math.min(100, parseInt(aiPercentInput.value) || 100));
+  const actual = IntakeCalc.calcActual(t, pct);
+
+  // Generate thumbnail from the AI image
+  let thumbnail = '';
+  if (aiImageDataUrl) {
+    thumbnail = await ImageUtil.makeThumbnail(aiImageDataUrl);
+  }
+
+  const record = {
+    date: DateUtil.today(),
+    mealType: aiCurrentMeal,
+    foods: aiRecognizedData.foods,
+    estimatedCalories: t.calories,
+    intakePercent: pct,
+    actualCalories: actual.calories,
+    actualNutrition: { carbs: actual.carbs, protein: actual.protein, fat: actual.fat, fiber: actual.fiber },
+    imagePreview: thumbnail,
+    source: 'ai',
+    description: aiRecognizedData.description || '',
+    timestamp: new Date().toISOString()
+  };
+
+  DietLog.addRecord(record);
+  UI.showToast(`已记录到${MEAL_NAMES[aiCurrentMeal]}！`);
+  setTimeout(() => location.href = 'index.html', 1200);
+}
+
+// ============================================================
+//  Tab 2: 手动选择 (保持原有功能)
+// ============================================================
+let selectedFoods = [];
+let currentMeal = paramMeal || getDefaultMealType();
+let thumbnailDataUrl = '';
+let activeCategory = null;
 
 // ===== 分类标签 =====
 function renderCategories() {
@@ -294,6 +498,7 @@ function selectMeal(meal) {
   currentMeal = meal;
   ['breakfast','lunch','dinner'].forEach(m => {
     document.getElementById('btn-'+m).className = 'btn ' + (m === meal ? 'btn-primary' : 'btn-secondary');
+    document.getElementById('btn-'+m).style.cssText = 'flex:1;padding:12px 8px;font-size:14px;white-space:nowrap;';
   });
 }
 selectMeal(currentMeal);
@@ -329,6 +534,7 @@ function saveRecord() {
     actualCalories: actual.calories,
     actualNutrition: { carbs: actual.carbs, protein: actual.protein, fat: actual.fat, fiber: actual.fiber },
     imagePreview: thumbnailDataUrl,
+    source: 'manual',
     timestamp: new Date().toISOString()
   };
 
@@ -340,6 +546,11 @@ function saveRecord() {
 // ===== 初始化 =====
 renderCategories();
 renderFoodList();
+
+// 如果 URL 指定了 tab=manual，切换到手动模式
+if (paramTab === 'manual') {
+  switchTab('manual');
+}
 </script>
 </body>
 </html>

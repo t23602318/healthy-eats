@@ -36,6 +36,119 @@ const ImageUtil = {
       img.onerror = () => resolve('');
       img.src = dataUrl;
     });
+  },
+
+  // 缩放图片用于 AI 识别（限制最大宽度以减少 payload）
+  resizeForAI(dataUrl, maxWidth = 1024) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxWidth) {
+          h = Math.round(h * maxWidth / w);
+          w = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+};
+
+// ===== 食物 AI 识别（通义千问 DashScope） =====
+const FoodAI = {
+  // Key 混淆存储（基本防护，非安全级加密）
+  _k: [115,107,45,119,115,45,72,46,82,88,82,73,88,77,82,46,106,89,49,73,46,77,69,81,67,73,71,117,74,50,97,88,120,77,45,90,84,80,105,104,87,121,87,116,69,73,55,72,100,106,57,107,97,100,110,99,57,77,116,95,90,80,119,78,66,55,110,52,65,105,65,82,120,48,108,116,78,73,100,90,48,87,86,99,49,85,121,68,109,53,70,90,76,51,117,103,77,66,102,108,68,76,109,122,71,86,106,45,72,76,81,50,71,81],
+  _dk() { return this._k.map(c => String.fromCharCode(c)).join(''); },
+
+  async recognizeFood(imageBase64) {
+    const apiKey = this._dk();
+    const payload = {
+      model: 'qwen-vl-plus',
+      input: {
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { image: imageBase64 },
+              {
+                text: `分析这张食物图片，识别所有食物并估算营养成分。严格按以下JSON格式返回，不要有其他文字：
+{
+  "foods": [
+    { "name": "食物名称", "amount": 100, "unit": "克", "calories": 200, "protein": 10.0, "carbs": 25.0, "fat": 8.0, "fiber": 2.0 }
+  ],
+  "total": { "calories": 200, "protein": 10.0, "carbs": 25.0, "fat": 8.0, "fiber": 2.0 },
+  "description": "简短描述这顿饭"
+}`
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const resp = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `API错误 ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    return this._parse(data);
+  },
+
+  _parse(data) {
+    const text = data.output?.choices?.[0]?.message?.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('未能解析识别结果');
+    const parsed = JSON.parse(match[0]);
+    if (!parsed.foods?.length) throw new Error('NO_FOOD');
+    return parsed;
+  },
+
+  // Demo mode - 3 sample meals returned at random
+  mockRecognize() {
+    const mocks = [
+      {
+        foods: [
+          { name: '白米饭', amount: 200, unit: '克', calories: 232, protein: 4.8, carbs: 50.4, fat: 0.6, fiber: 0.4 },
+          { name: '清炒菠菜', amount: 150, unit: '克', calories: 45, protein: 2.1, carbs: 6.3, fat: 1.2, fiber: 2.1 }
+        ],
+        total: { calories: 277, protein: 6.9, carbs: 56.7, fat: 1.8, fiber: 2.5 },
+        description: '一碗白米饭配清炒菠菜'
+      },
+      {
+        foods: [
+          { name: '鸡胸肉', amount: 150, unit: '克', calories: 200, protein: 46.5, carbs: 0, fat: 1.8, fiber: 0 },
+          { name: '西兰花', amount: 100, unit: '克', calories: 34, protein: 2.8, carbs: 5.8, fat: 0.4, fiber: 2.6 },
+          { name: '糙米饭', amount: 150, unit: '克', calories: 167, protein: 3.9, carbs: 34.5, fat: 1.4, fiber: 2.7 }
+        ],
+        total: { calories: 401, protein: 53.2, carbs: 40.3, fat: 3.6, fiber: 5.3 },
+        description: '健康餐：鸡胸肉+西兰花+糙米饭'
+      },
+      {
+        foods: [
+          { name: '番茄炒蛋', amount: 200, unit: '克', calories: 170, protein: 11.0, carbs: 9.0, fat: 11.0, fiber: 1.6 },
+          { name: '米饭', amount: 150, unit: '克', calories: 174, protein: 3.9, carbs: 38.4, fat: 0.5, fiber: 0.5 }
+        ],
+        total: { calories: 344, protein: 14.9, carbs: 47.4, fat: 11.5, fiber: 2.1 },
+        description: '番茄炒蛋盖饭'
+      }
+    ];
+    return Promise.resolve(mocks[Math.floor(Math.random() * mocks.length)]);
   }
 };
 
