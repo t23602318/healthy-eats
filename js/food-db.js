@@ -68,16 +68,21 @@ const FoodAI = {
 
   async recognizeFood(imageBase64) {
     const apiKey = this._dk();
+
+    // 使用 OpenAI 兼容接口
     const payload = {
       model: 'qwen-vl-plus',
-      input: {
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { image: imageBase64 },
-              {
-                text: `分析这张食物图片，识别所有食物并估算营养成分。严格按以下JSON格式返回，不要有其他文字：
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: imageBase64 }
+            },
+            {
+              type: 'text',
+              text: `分析这张食物图片，识别所有食物并估算营养成分。严格按以下JSON格式返回，不要有其他文字：
 {
   "foods": [
     { "name": "食物名称", "amount": 100, "unit": "克", "calories": 200, "protein": 10.0, "carbs": 25.0, "fat": 8.0, "fiber": 2.0 }
@@ -85,14 +90,13 @@ const FoodAI = {
   "total": { "calories": 200, "protein": 10.0, "carbs": 25.0, "fat": 8.0, "fiber": 2.0 },
   "description": "简短描述这顿饭"
 }`
-              }
-            ]
-          }
-        ]
-      }
+            }
+          ]
+        }
+      ]
     };
 
-    const resp = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', {
+    const resp = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -103,7 +107,7 @@ const FoodAI = {
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `API错误 ${resp.status}`);
+      throw new Error(err.error?.message || err.message || `API错误 ${resp.status}`);
     }
 
     const data = await resp.json();
@@ -111,7 +115,8 @@ const FoodAI = {
   },
 
   _parse(data) {
-    const text = data.output?.choices?.[0]?.message?.content?.[0]?.text || '';
+    // OpenAI 兼容格式
+    const text = data.choices?.[0]?.message?.content || '';
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('未能解析识别结果');
     const parsed = JSON.parse(match[0]);
